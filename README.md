@@ -1,4 +1,19 @@
 # Hi Hysteria
+##### (2026/05/10) ver1.05
+
+```
+新增 Realm 模式（P2P 穿透），移除 HYSTERIA_FIREWALL_BACKEND，调整拥塞控制排序。
+
+1、新增 Realm 模式（P2P 穿透），无需公网 IP 和端口转发即可运行，通过牵手服务器进行 UDP 打洞后流量直连
+2、Realm 模式下自动跳过端口配置、端口跳跃、TCP 伪装监听和防火墙操作
+3、Realm 模式当前仅支持 hysteria core 直接运行，不支持分享链接与 ClashMeta 配置导出
+4、证书申请前新增 Realm 模式选择，支持官方/自建牵手服务器，默认使用 realm.hy2.io
+5、拥塞控制选项重新排序为 Reno(保守) / BBR(均衡) / Brutal(激进,默认)，空输入默认 Brutal
+6、移除所有 HYSTERIA_FIREWALL_BACKEND="iptables" 环境变量，不再通过该变量指定防火墙后端
+7、修复 Realm URI 构造错误（public@public@realm.hy2.io），牵手地址与密码分离设置
+8、Realm 模式客户端配置补充独立的 auth 字段
+```
+
 ##### (2026/04/18) ver1.04-c
 
 ```
@@ -70,6 +85,7 @@
 * 计算BDP（带宽延迟积）来调整quic参数，适应多种多样的需求场景
 * 支持添加socks5出站，包括自动添加warp出站功能
 * 支持lxc、openvz、kvm等现在的所有主流的虚拟化方式
+* 支持Realm模式（P2P穿透），无需公网IP和端口转发即可建立连接
 * 更新及时，hysteria2更新后24h内完成适配
 
 </details>
@@ -92,6 +108,8 @@
 
 #### 7. [启动一个伪装网站](md/masquerade.md)
 
+#### 8. [Realm模式 - P2P穿透](md/realm.md)
+
 ### 拉取安装
 
 ```
@@ -109,7 +127,7 @@ bash <(curl -fsSL https://git.io/hysteria.sh)
  -------------------------------------------
 |**********      Hi Hysteria       **********|
 |**********    Author: emptysuns   **********|
-|**********   Version: ver1.04-c   **********|
+|**********   Version: ver1.05     **********|
  -------------------------------------------
 Tips: hihy  命令再次运行本脚本.
 ............................................. 

@@ -1,5 +1,5 @@
 #!/bin/bash
-hihyV="ver1.04-c"
+hihyV="ver1.05"
 
 HIHY_ROOT_DIR="${HIHY_ROOT_DIR:-/etc/hihy}"
 HIHY_BIN_LINK="${HIHY_BIN_LINK:-/usr/bin/hihy}"
@@ -53,7 +53,7 @@ startInstallValidationProcess() {
     local yaml_file="$1"
     local debug_file="${2:-./hihy_debug.info}"
 
-    env HYSTERIA_FIREWALL_BACKEND="iptables" /etc/hihy/bin/appS -c "$yaml_file" server > "$debug_file" 2>&1 &
+    /etc/hihy/bin/appS -c "$yaml_file" server > "$debug_file" 2>&1 &
 }
 
 fetchRemoteBodyFromSources() {
@@ -866,6 +866,45 @@ setHysteriaConfig(){
     fi
     touch $acl_file
 	echoColor yellowBlack "开始配置:"
+	echo -e "\033[32m(0/13)是否使用Realm模式(P2P穿透,无需公网IP):\n\n\033[0m"
+	echo -e "Realm是Hysteria2的P2P穿透模式,通过牵手(rendezvous)服务器介绍双方进行UDP打洞,"
+	echo -e "打洞成功后流量直连,不经过牵手服务器。服务器无需公网IP、无需端口转发即可运行。"
+	echo -e "适用: NAT/家庭宽带/CGNAT/无公网IP环境。详情: https://hysteria.network/zh/docs/advanced/Realms/"
+	echo -e "\033[33m\033[01m⚠ 目前仅支持使用hysteria core直接运行\033[0m\033[32m\n"
+	echo -e "\033[33m\033[01m1、不使用(默认)\n2、使用Realm模式\033[0m\033[32m\n\n输入序号:\033[0m"
+	read realmChoice
+	if [ -z "${realmChoice}" ] || [ "${realmChoice}" == "1" ];then
+		realmMode="false"
+	else
+		realmMode="true"
+		realmName=$(generate_uuid)
+		echo -e "\n->您的Realm名(请勿泄露,知道此名称的人可以获得你的服务器ip地址): "`echoColor red ${realmName}`"\n"
+		echoColor green "\n请选择牵手(rendezvous)服务器:"
+		echo -e "官方服务器地址为 realm.hy2.io, 使用默认密码 public 即可,无需修改"
+		echo -e "\033[33m\033[01m1、官方牵手服务器(默认): realm.hy2.io\n2、自建牵手服务器\033[0m\033[32m\n\n输入序号:\033[0m"
+		read realmServerChoice
+		if [ -z "${realmServerChoice}" ] || [ "${realmServerChoice}" == "1" ];then
+			realmAddress="realm.hy2.io"
+			realmPassword="public"
+		else
+			echoColor green "请输入牵手服务器地址(格式: host:port 或 host):"
+			read realmAddressInput
+			while [ -z "${realmAddressInput}" ]; do
+				echoColor red "地址不能为空,请重新输入:"
+				read realmAddressInput
+			done
+			realmAddress="${realmAddressInput}"
+			echoColor green "请输入牵手服务器密码(默认: public):"
+			read realmPasswordInput
+			if [ -z "${realmPasswordInput}" ];then
+				realmPassword="public"
+			else
+				realmPassword="${realmPasswordInput}"
+			fi
+		fi
+		realmURI="realm://${realmPassword}@${realmAddress}/${realmName}"
+		echo -e "\n->牵手地址: "`echoColor red ${realmURI}`"\n"
+	fi
 	echo -e "\033[32m(1/11)请选择证书申请方式:\n\n\033[0m\033[33m\033[01m1、使用ACME申请(推荐,需打开tcp/80端口)\n2、使用本地证书文件\n3、自签证书\n4、dns验证\033[0m\033[32m\n\n输入序号:\033[0m"
     read certNum
 	useAcme=false
@@ -883,33 +922,42 @@ setHysteriaConfig(){
 			domain="helloworld.com"
 		fi
 		echo -e "->自签证书域名为:"`echoColor red ${domain}`"\n"
-		ip=`curl -4 -s -m 8 ip.sb`
-		if [ -z "${ip}" ];then
-			ip=`curl -s -m 8 ip.sb`
-		fi
-		echoColor green "判断客户端连接所使用的地址是否正确?公网ip:"`echoColor red ${ip}`"\n"
-		while true
-		do
-			echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、正确(默认)\n2、不正确,手动输入ip\033[0m\033[32m\n\n输入序号:\033[0m"
-			read ipNum
-			if [ -z "${ipNum}" ] || [ "${ipNum}" == "1" ];then
-				break
-			elif [ "${ipNum}" == "2" ];then
-				echoColor green "请输入正确的公网ip(ipv6地址不需要加[]):"
-				read ip
-				if [ -z "${ip}" ];then
-					echoColor red "输入错误,请重新输入..."
-					continue
-				fi
-				break
-			else
-				echoColor red "\n->输入错误,请重新输入:"
+		if [ "${realmMode}" == "true" ];then
+			ip=""
+			echo -e "\n->牵手地址: "`echoColor red ${realmURI}`"\n"
+		else
+			ip=`curl -4 -s -m 8 ip.sb`
+			if [ -z "${ip}" ];then
+				ip=`curl -s -m 8 ip.sb`
 			fi
-		done
+			echoColor green "判断客户端连接所使用的地址是否正确?公网ip:"`echoColor red ${ip}`"\n"
+			while true
+			do
+				echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、正确(默认)\n2、不正确,手动输入ip\033[0m\033[32m\n\n输入序号:\033[0m"
+				read ipNum
+				if [ -z "${ipNum}" ] || [ "${ipNum}" == "1" ];then
+					break
+				elif [ "${ipNum}" == "2" ];then
+					echoColor green "请输入正确的公网ip(ipv6地址不需要加[]):"
+					read ip
+					if [ -z "${ip}" ];then
+						echoColor red "输入错误,请重新输入..."
+						continue
+					fi
+					break
+				else
+					echoColor red "\n->输入错误,请重新输入:"
+				fi
+			done
+		fi
 		cert="/etc/hihy/cert/${domain}.crt"
 		key="/etc/hihy/cert/${domain}.key"
 		useAcme=false
-		echoColor purple "\n\n->您已选择自签${domain}证书加密.公网ip:"`echoColor red ${ip}`"\n"
+		if [ "${realmMode}" == "true" ];then
+			echoColor purple "\n\n->您已选择自签${domain}证书加密.牵手地址:"`echoColor red ${realmURI}`"\n"
+		else
+			echoColor purple "\n\n->您已选择自签${domain}证书加密.公网ip:"`echoColor red ${ip}`"\n"
+		fi
 		echo -e "\n"
 
     elif [ "${certNum}" == "2" ];then
@@ -1194,6 +1242,10 @@ setHysteriaConfig(){
 		echoColor purple "\n\n->解析正确,使用hysteria内置ACME申请证书.域名:"`echoColor red ${domain}`"\n"
     fi
 
+	if [ "${realmMode}" == "true" ];then
+		port=""
+		echoColor purple "\n->Realm模式无需配置端口,跳过端口设置\n"
+	else
 	while :
 	do
 		echoColor green "\n(2/11)请输入你想要开启的端口,此端口是server端口,推荐443.(默认随机10000-65535)"
@@ -1216,7 +1268,9 @@ setHysteriaConfig(){
 			break
 		fi
 	done
+	fi
 
+	if [ "${realmMode}" != "true" ]; then
 	echoColor green "\n->(3/13)是否使用端口跳跃(Port Hopping),推荐使用"
 	echo -e "Tip: 长时间单端口 UDP 连接容易被运营商封锁/QoS/断流,启动此功能可以有效避免此问题."
 	echo -e "更加详细介绍请参考: https://v2.hysteria.network/zh/docs/advanced/Port-Hopping/\n"
@@ -1320,33 +1374,31 @@ setHysteriaConfig(){
 		portHoppingMaxHopInterval=""
 		echoColor red "\n->您选择不使用端口跳跃功能"
 	fi
+	else
+		portHoppingStatus="false"
+		echoColor purple "\n->Realm模式无需端口跳跃,跳过此设置\n"
+	fi
 
     echoColor green "(4/13)请选择拥塞控制模式:"
     echo -e "Reno: 更保守、更稳，适合优先考虑兼容性和稳定性的场景"
     echo -e "BBR: 更积极，通常吞吐更高，适合追求速度的场景"
     echo -e "Brutal: Hysteria 2 独享特色，固定速率模型，在恶劣网络环境下通常更值得优先尝试，尤其适合已知链路真实带宽、希望获得更强抗抖动和抢带宽能力的场景"
-    echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、Brutal(默认)\n2、Reno(更稳)\n3、BBR(更快)\033[0m\033[32m\n\n输入序号:\033[0m"
+    echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、Reno(保守)\n2、BBR(均衡)\n3、Brutal(激进,默认)\033[0m\033[32m\n\n输入序号:\033[0m"
     read congestion_num
-    if [ -z "${congestion_num}" ] || [ "${congestion_num}" == "1" ];then
-        congestion_mode="brutal"
-        congestion_type=""
-        congestion_bbr_profile=""
-        ignore_client_bandwidth="false"
-        echo -e "\n->您选择的拥塞控制模式: "`echoColor red Brutal`"\n"
-    elif [ "${congestion_num}" == "2" ];then
+    if [ "${congestion_num}" == "1" ];then
         congestion_mode="reno"
         congestion_type="reno"
         congestion_bbr_profile=""
         ignore_client_bandwidth="true"
         echo -e "\n->您选择的拥塞控制模式: "`echoColor red Reno`"\n"
-    else
+    elif [ "${congestion_num}" == "2" ];then
         congestion_mode="bbr"
         congestion_type="bbr"
         ignore_client_bandwidth="true"
         echoColor green "BBR 提供三档调节方式，适合不同网络环境："
-        echo -e "1、初级 / conservative：更保守，收敛更稳，适合链路波动较大、网络质量一般、优先稳定性的场景"
-        echo -e "2、中级 / standard(默认)：官方默认预设，速度与稳定性更均衡，适合大多数 VPS 和家庭宽带环境"
-        echo -e "3、高级 / aggressive：更激进，更积极抢占带宽，适合链路质量较好、追求更高吞吐的场景，但波动时可能更敏感"
+        echo -e "1、保守 / conservative：更保守，收敛更稳，适合链路波动较大、网络质量一般、优先稳定性的场景"
+        echo -e "2、均衡 / standard(默认)：官方默认预设，速度与稳定性更均衡，适合大多数 VPS 和家庭宽带环境"
+        echo -e "3、激进 / aggressive：更激进，更积极抢占带宽，适合链路质量较好、追求更高吞吐的场景，但波动时可能更敏感"
         echo -e "\033[32m请选择 BBR 预设等级:\n\n\033[0m\033[33m\033[01m1、初级(conservative)\n2、中级(standard，默认)\n3、高级(aggressive)\033[0m\033[32m\n\n输入序号:\033[0m"
         read bbr_profile_num
         case ${bbr_profile_num} in
@@ -1355,6 +1407,12 @@ setHysteriaConfig(){
             *) congestion_bbr_profile="standard" ;;
         esac
         echo -e "\n->您选择的拥塞控制模式: "`echoColor red BBR`" / BBR预设: "`echoColor red ${congestion_bbr_profile}`"\n"
+    else
+        congestion_mode="brutal"
+        congestion_type=""
+        congestion_bbr_profile=""
+        ignore_client_bandwidth="false"
+        echo -e "\n->您选择的拥塞控制模式: "`echoColor red Brutal`"\n"
     fi
 
     if [ "${congestion_mode}" == "brutal" ];then
@@ -1450,17 +1508,22 @@ setHysteriaConfig(){
     if [ "${masquerade_type}" != "proxy" ];then
         masquerade_xforwarded="false"
     fi
-    echoColor green "(11/13)是否同时监听tcp/${port}端口来增强伪装行为(做戏做全套):"
-    echoColor lightYellow "通常网站支持 HTTP/3 的只是将其作为一个升级选项"
-    echo -e "监听一个tcp端口来提供伪装内容,使伪装更加自然,如果不启用此选项,浏览器将在不启用H3功能下访问不了伪装内容"
-    echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、启用(默认)\n2、跳过\033[0m\033[32m\n\n输入序号:\033[0m"
-    read masquerade_tcp
-    if [ -z "${masquerade_tcp}" ] || [ ${masquerade_tcp} == "1" ];then
-        masquerade_tcp="true"
-        echo -e "\n->您选择同时监听`echoColor red tcp/${port}`端口\n"
-    else
+    if [ "${realmMode}" == "true" ];then
         masquerade_tcp="false"
-        echo -e "\n->您选择不监听tcp/${port}端口\n"
+        echoColor purple "\n->Realm模式无需TCP监听,跳过伪装端口设置\n"
+    else
+        echoColor green "(11/13)是否同时监听tcp/${port}端口来增强伪装行为(做戏做全套):"
+        echoColor lightYellow "通常网站支持 HTTP/3 的只是将其作为一个升级选项"
+        echo -e "监听一个tcp端口来提供伪装内容,使伪装更加自然,如果不启用此选项,浏览器将在不启用H3功能下访问不了伪装内容"
+        echo -e "\033[32m请选择:\n\n\033[0m\033[33m\033[01m1、启用(默认)\n2、跳过\033[0m\033[32m\n\n输入序号:\033[0m"
+        read masquerade_tcp
+        if [ -z "${masquerade_tcp}" ] || [ ${masquerade_tcp} == "1" ];then
+            masquerade_tcp="true"
+            echo -e "\n->您选择同时监听`echoColor red tcp/${port}`端口\n"
+        else
+            masquerade_tcp="false"
+            echo -e "\n->您选择不监听tcp/${port}端口\n"
+        fi
     fi
     echoColor green "\n(12/13)是否在服务器屏蔽http3流量(hysteria对udp流量拥塞控制无增强效果，导致访问youtube等使用QUIC连接的网站效果不佳):"
     echoColor lightYellow "如果开启此选项，hysteria2将不会代理udp/443，无法使用QUIC连接访问网站，并且需要在客户端配置中禁用QUIC连接，否则会导致连接失败。\n"
@@ -1491,7 +1554,9 @@ setHysteriaConfig(){
         server_download=${upload}
     fi
 
-	if [ "${portHoppingStatus}" == "true" ];then
+	if [ "${realmMode}" == "true" ];then
+		addOrUpdateYaml "$yaml_file" "listen" "${realmURI}"
+	elif [ "${portHoppingStatus}" == "true" ];then
 		addOrUpdateYaml "$yaml_file" "listen" ":${port},${portHoppingStart}-${portHoppingEnd}"
 	else
 		addOrUpdateYaml "$yaml_file" "listen" ":${port}"
@@ -1555,7 +1620,7 @@ setHysteriaConfig(){
             fi
         ;;
     esac
-    if [ "${masquerade_tcp}" == "true" ];then
+    if [ "${realmMode}" != "true" ] && [ "${masquerade_tcp}" == "true" ];then
         addOrUpdateYaml "$yaml_file" "masquerade.listenHTTPS" ":${port}"
     fi
     addOrUpdateYaml "$yaml_file" "speedTest" "true"
@@ -1652,6 +1717,10 @@ setHysteriaConfig(){
             addOrUpdateYaml "$yaml_file" "acme.listenHost" "0.0.0.0"
         fi
     fi
+	if [ "${realmMode}" == "true" ];then
+		u_host="${realmURI}"
+	fi
+
     addOrUpdateYaml "$yaml_file" "sniff.enabled" "true"
     addOrUpdateYaml "$yaml_file" "sniff.timeout" "2s"
     addOrUpdateYaml "$yaml_file" "sniff.rewriteDomain" "false"
@@ -1724,13 +1793,15 @@ setHysteriaConfig(){
             echoColor purple "Stop test program..."
             pkill -f "/etc/hihy/bin/appS"
             rm ./hihy_debug.info
-            allowPort udp ${port}
-            if [ "${portHoppingStatus}" == "true" ];then
-                allowPort udp ${portHoppingStart}:${portHoppingEnd}
-            fi
-            if [ "${masquerade_tcp}" == "true" ];then
-                getPortBindMsg TCP ${port}
-                allowPort tcp ${port}
+            if [ "${realmMode}" != "true" ];then
+                allowPort udp ${port}
+                if [ "${portHoppingStatus}" == "true" ];then
+                    allowPort udp ${portHoppingStart}:${portHoppingEnd}
+                fi
+                if [ "${masquerade_tcp}" == "true" ];then
+                    getPortBindMsg TCP ${port}
+                    allowPort tcp ${port}
+                fi
             fi
             echoColor purple "Generating config..."
             ;;
@@ -1771,6 +1842,11 @@ setHysteriaConfig(){
 	addOrUpdateYaml ${backup_file} "domain" "${domain}"
     addOrUpdateYaml ${backup_file} "trafficPort" "${trafficPort}"
     addOrUpdateYaml ${backup_file} "socks5_status" "false"
+	addOrUpdateYaml ${backup_file} "realmMode" "${realmMode}"
+	if [ "${realmMode}" == "true" ];then
+		addOrUpdateYaml ${backup_file} "realmURI" "${realmURI}"
+		addOrUpdateYaml ${backup_file} "realmName" "${realmName}"
+	fi
     addOrUpdateYaml ${backup_file} "masquerade_xforwarded" "${masquerade_xforwarded}"
     if [ "$masquerade_tcp" == "true" ];then
         addOrUpdateYaml ${backup_file} "masquerade_tcp" "true"
@@ -2000,7 +2076,6 @@ command_background="yes"
 pidfile="/var/run/hihy.pid"
 output_log="/etc/hihy/logs/hihy.log"
 error_log="/etc/hihy/logs/hihy.log"
-export HYSTERIA_FIREWALL_BACKEND="iptables"
 
 extra_started_commands="log status"
 
@@ -2074,7 +2149,6 @@ HIHY_PATH="/etc/hihy"
 PID_FILE="/var/run/hihy.pid"
 LOG_FILE="\$HIHY_PATH/logs/hihy.log"
 START_CMD_PREFIX="${start_cmd_prefix}"
-export HYSTERIA_FIREWALL_BACKEND="iptables"
 
 start() {
     if [ -f "\$PID_FILE" ] && kill -0 \$(cat "\$PID_FILE") 2>/dev/null; then
@@ -2084,9 +2158,9 @@ start() {
     
     echo "Starting hihy..."
     if [ -n "\$START_CMD_PREFIX" ]; then
-        nohup env HYSTERIA_FIREWALL_BACKEND="\$HYSTERIA_FIREWALL_BACKEND" \$START_CMD_PREFIX \$HIHY_PATH/bin/appS --log-level info -c \$HIHY_PATH/conf/config.yaml server > "\$LOG_FILE" 2>&1 &
+        nohup \$START_CMD_PREFIX \$HIHY_PATH/bin/appS --log-level info -c \$HIHY_PATH/conf/config.yaml server > "\$LOG_FILE" 2>&1 &
     else
-        nohup env HYSTERIA_FIREWALL_BACKEND="\$HYSTERIA_FIREWALL_BACKEND" \$HIHY_PATH/bin/appS --log-level info -c \$HIHY_PATH/conf/config.yaml server > "\$LOG_FILE" 2>&1 &
+        nohup \$HIHY_PATH/bin/appS --log-level info -c \$HIHY_PATH/conf/config.yaml server > "\$LOG_FILE" 2>&1 &
     fi
     echo \$! > "\$PID_FILE"
 }
@@ -2596,6 +2670,10 @@ generate_client_config(){
     fi
 	remarks=$(getYamlValue "/etc/hihy/conf/backup.yaml" "remarks")
 	serverAddress=$(getYamlValue "/etc/hihy/conf/backup.yaml" "serverAddress")
+	realmMode=$(getBackupValueOrDefault "/etc/hihy/conf/backup.yaml" "realmMode" "false")
+	if [ "${realmMode}" == "true" ];then
+		realmURI=$(getYamlValue "/etc/hihy/conf/backup.yaml" "realmURI")
+	fi
 	listen_value=$(getYamlValue "/etc/hihy/conf/config.yaml" "listen")
 	port=$(getListenPrimaryPort "${listen_value}")
 	auth_secret=$(getYamlValue "/etc/hihy/conf/config.yaml" "auth.password")
@@ -2648,12 +2726,15 @@ generate_client_config(){
 		rm -r ${client_configfile}
 	fi
 	touch ${client_configfile}
-	if [ "${portHoppingStatus}" == "true" ];then
+	if [ "${realmMode}" == "true" ];then
+		addOrUpdateYaml "$client_configfile" "server" "${realmURI}"
+		addOrUpdateYaml "$client_configfile" "auth" "${auth_secret}"
+	elif [ "${portHoppingStatus}" == "true" ];then
 		addOrUpdateYaml "$client_configfile" "server" "hysteria2://${auth_secret}@${serverAddress}:${port},${serverPortRange}/"
 	else
 		addOrUpdateYaml "$client_configfile" "server" "hysteria2://${auth_secret}@${serverAddress}:${port}/"
 	fi
-	
+
 	addOrUpdateYaml "$client_configfile" "tls.sni" "${tls_sni}"
 	if [ "${insecure}" == "true" ];then
 		addOrUpdateYaml "$client_configfile" "tls.insecure" "true"
@@ -2699,6 +2780,9 @@ generate_client_config(){
 	addOrUpdateYaml "$client_configfile" "fastOpen" "true"
     addOrUpdateYaml "$client_configfile" "lazy" "true"
 	addOrUpdateYaml "$client_configfile" "socks5.listen" "127.0.0.1:20808"
+	if [ "${realmMode}" == "true" ];then
+		url=""
+	else
 	url_base="hy2://${auth_secret}@${serverAddress}"
     
 	
@@ -2718,6 +2802,7 @@ generate_client_config(){
 		url_base="${url_base}&obfs=salamander&obfs-password=${obfs_pass}"
 	fi
 	url="${url_base}&sni=${tls_sni}#Hy2-${remarks}"
+	fi
 	 # 在生成配置前添加分隔线
     echo -e "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "📝 生成客户端配置文件..."
@@ -2728,31 +2813,49 @@ generate_client_config(){
     echo -e "\n📌 当前hysteria2 server版本: `echoColor red ${localV}`"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    if [ "${portHoppingStatus}" == "false" ];then
-        echo -e "⚠️  注意: 伪装并未监听tcp端口"
-        echo -e "💡 您可能需要`echoColor red 手动在浏览器添加h3`支持才能访问"
+    if [ "${realmMode}" != "true" ];then
+        if [ "${portHoppingStatus}" == "false" ];then
+            echo -e "⚠️  注意: 伪装并未监听tcp端口"
+            echo -e "💡 您可能需要`echoColor red 手动在浏览器添加h3`支持才能访问"
+        fi
+
+        if [ "${insecure}" == "true" ];then
+            echo -e "\n⚠️  安全提示:"
+            echo -e "🔒 您使用自签证书,如需要验证伪装网站:"
+            echo -e "   1. 自行修改浏览器信任证书"
+            echo -e "   2. 设置hosts使IP指向该域名"
+        fi
+        echoColor purple "\n🌐 1、伪装地址: `echoColor red https://${tls_sni}:${port}`"
     fi
-    
-    if [ "${insecure}" == "true" ];then
-        echo -e "\n⚠️  安全提示:"
-        echo -e "🔒 您使用自签证书,如需要验证伪装网站:"
-        echo -e "   1. 自行修改浏览器信任证书"
-        echo -e "   2. 设置hosts使IP指向该域名"
 
+    if [ "${realmMode}" == "true" ];then
+        echoColor purple "\n🌐 Realm模式 - 服务器通过P2P打洞连接,无需公网IP和端口"
+        echoColor purple "\n🔗 1、牵手地址:"
+        echoColor green "  ${realmURI}"
+        echo -e "\n"
+        echoColor yellow "⚠ 请确保您的客户端支持Hysteria2 Realm模式"
+        echoColor yellow "客户端配置中server字段使用上述牵手地址,认证密码为: "`echoColor red ${auth_secret}`
+        echo -e "\n"
+        echoColor yellow "Realm模式不支持分享链接和ClashMeta配置,请使用原生配置文件"
+    else
+        echoColor purple "\n🔗 2、[v2rayN-Windows/v2rayN-Andriod/nekobox/passwall/Shadowrocket]分享链接:\n"
+        echoColor green "${url}"
+        echo -e "\n"
+        generate_qr "${url}"
     fi
-    echoColor purple "\n🌐 1、伪装地址: `echoColor red https://${tls_sni}:${port}`"
 
-    echoColor purple "\n🔗 2、[v2rayN-Windows/v2rayN-Andriod/nekobox/passwall/Shadowrocket]分享链接:\n"
-    echoColor green "${url}"
-    echo -e "\n"
-    generate_qr "${url}"
-
-    echoColor purple "\n📄 3、[推荐] [Nekoray/V2rayN/NekoBoxforAndroid]原生配置文件,更新最快、参数最全、效果最好。文件地址: `echoColor green ${client_configfile}`"
+    if [ "${realmMode}" == "true" ];then
+        echoColor purple "\n📄 2、[推荐] [Nekoray/V2rayN/NekoBoxforAndroid]原生配置文件,更新最快、参数最全、效果最好。文件地址: `echoColor green ${client_configfile}`"
+    else
+        echoColor purple "\n📄 3、[推荐] [Nekoray/V2rayN/NekoBoxforAndroid]原生配置文件,更新最快、参数最全、效果最好。文件地址: `echoColor green ${client_configfile}`"
+    fi
     echoColor green "↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓COPY↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓"
     cat ${client_configfile}
     echoColor green "↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑COPY↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
-    generateMetaYaml
-    
+    if [ "${realmMode}" != "true" ];then
+        generateMetaYaml
+    fi
+
     echo -e "\n✅ 配置生成完成!"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 }
@@ -2903,6 +3006,7 @@ rules:
   - GEOIP,CN,DIRECT
   - MATCH,PROXY
 EOF
+	realmMode=$(getBackupValueOrDefault "/etc/hihy/conf/backup.yaml" "realmMode" "false")
 	serverAddress=$(getYamlValue "/etc/hihy/conf/backup.yaml" "serverAddress")
     listen_value=$(getYamlValue "/etc/hihy/conf/config.yaml" "listen")
     port=$(getListenPrimaryPort "${listen_value}")
@@ -2929,10 +3033,15 @@ EOF
     fi
     addOrUpdateYaml "${metaFile}" "proxies[0].name" "${remarks}"
     addOrUpdateYaml "${metaFile}" "proxies[0].type" "hysteria2"
-    addOrUpdateYaml "${metaFile}" "proxies[0].server" "${serverAddress}"
-    addOrUpdateYaml "${metaFile}" "proxies[0].port" "${port}"
-    if [ "${portHoppingStatus}" == "true" ];then
-        addOrUpdateYaml "${metaFile}" "proxies[0].ports" "${portHoppingStart}-${portHoppingEnd}"
+    if [ "${realmMode}" == "true" ];then
+        addOrUpdateYaml "${metaFile}" "proxies[0].server" "${serverAddress}"
+        yq eval 'del(.proxies[0].port)' -i "${metaFile}"
+    else
+        addOrUpdateYaml "${metaFile}" "proxies[0].server" "${serverAddress}"
+        addOrUpdateYaml "${metaFile}" "proxies[0].port" "${port}"
+        if [ "${portHoppingStatus}" == "true" ];then
+            addOrUpdateYaml "${metaFile}" "proxies[0].ports" "${portHoppingStart}-${portHoppingEnd}"
+        fi
     fi
     addOrUpdateYaml "${metaFile}" "proxies[0].password" "${auth_secret}"
     addOrUpdateYaml "${metaFile}" "proxies[0].up" "${upload} Mbps"
@@ -2947,6 +3056,9 @@ EOF
     addOrUpdateYaml "${metaFile}" "proxy-groups[0].type" "select"
     addOrUpdateYaml "${metaFile}" "proxy-groups[0].proxies" "[${remarks}]"
     echoColor purple "\n📱 4、[Clash.Mini/ClashX.Meta/Clash.Meta for Android/Clash.verge/openclash] ClashMeta配置。文件地址: `echoColor green ${metaFile}`"
+    if [ "${realmMode}" == "true" ];then
+        echoColor yellow "⚠ Clash Meta可能不完全支持Realm模式,建议优先使用原生配置文件"
+    fi
 
 }
 
