@@ -14,6 +14,7 @@
 8、Realm 模式客户端配置补充独立的 auth 字段
 ```
 
+[realm p2p打洞介绍, 此功能是实验性质](https://github.com/emptysuns/Hi_Hysteria/blob/main/md/realm.md)
 
 有问题，或者想交流使用经验，欢迎加入 TG 群：
 [![Telegram](https://img.shields.io/badge/Telegram-HiHysteria-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://hihysteria.t.me)
