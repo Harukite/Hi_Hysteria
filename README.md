@@ -14,15 +14,6 @@
 8、Realm 模式客户端配置补充独立的 auth 字段
 ```
 
-##### (2026/04/18) ver1.04-c
-
-```
-修复 UFW / 防火墙端口放行与清理细节，补齐端口跳跃场景的防火墙回收逻辑。
-
-1、修复 UFW 在端口跳跃场景下放行端口范围时遗漏 `/udp`，避免触发 `Must specify 'tcp' or 'udp' with multiple ports`
-2、修复重配 / 卸载时端口跳跃范围从 listen 解析为 `47000-48000` 后，未转换回防火墙使用的 `47000:48000`，导致规则无法删除的问题
-3、菜单与脚本版本号更新为 ver1.04-c
-```
 
 有问题，或者想交流使用经验，欢迎加入 TG 群：
 [![Telegram](https://img.shields.io/badge/Telegram-HiHysteria-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://hihysteria.t.me)
